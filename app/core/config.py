@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     MODEL_NAME:str
     MAX_TOKEN:int
     TEMPERATURE:float
+    UNSTRUCTURED_API:str
+    WIKI_API_BASE :str
+    USER_AGENT:str
     model_config = ConfigDict( env_file=BASE_DIR / ".env",env_file_encoding="utf-8")
 
 
