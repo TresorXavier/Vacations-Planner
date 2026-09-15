@@ -33,3 +33,4 @@ uv.lock
 
 migrations/versions/__pycache__/
 *.pyc
+chroma_store

@@ -7,12 +7,19 @@ The Vacation Planner API is a backend system built with FastAPI that helps users
 This project covers core backend development concepts including:
 
 - FastAPI fundamentals
+
 - RESTful API design
+
 - SQL database integration with async SQLAlchemy
+
 - ORM usage (SQLAlchemy + Alembic migrations)
+
 - CRUD operations
+
 - JWT-based authentication
+
 - LLM integration (Anthropic Claude) with structured outputs and tool use
+
 - Environment-based configuration
 
 ## Features
@@ -20,9 +27,13 @@ This project covers core backend development concepts including:
 Users can:
 
 - Register and log into the platform
+
 - Create and manage trips (destination, days, budget, travel style)
+
 - Generate personalized itineraries using AI, based on their trip details
+
 - Retrieve and update previously generated itineraries
+
 - Securely access all protected routes using JWT authentication
 
 ---
@@ -32,96 +43,175 @@ Users can:
 ### Project Structure
 
 ```
+
 app/
+
 ├── api/
-│   ├── routes/
-│   │   ├── auth.py          # Registration and login endpoints
-│   │   ├── users.py         # User profile endpoints
-│   │   ├── trips.py         # Trip CRUD endpoints
-│   │   └── itinerary.py     # Itinerary generation and retrieval
-│   └── routes_deps.py       # Shared dependencies (auth, logging middleware)
+
+│   ├── routes/
+
+│   │   ├── auth.py          # Registration and login endpoints
+
+│   │   ├── users.py         # User profile endpoints
+
+│   │   ├── trips.py         # Trip CRUD endpoints
+
+│   │   └── itinerary.py     # Itinerary generation and retrieval
+
+│   └── routes_deps.py       # Shared dependencies (auth, logging middleware)
+
 ├── core/
-│   ├── base.py              # SQLAlchemy declarative base
-│   ├── config.py            # Environment variable settings
-│   ├── lifespan_db.py       # DB session factory and startup
-│   └── validation.py        # Custom request validation error handler
+
+│   ├── base.py              # SQLAlchemy declarative base
+
+│   ├── config.py            # Environment variable settings
+
+│   ├── lifespan_db.py       # DB session factory and startup
+
+│   └── validation.py        # Custom request validation error handler
+
 ├── llm/
-│   ├── message.py           # Prompt builder, tool loop, Claude API calls
-│   └── use_tools.py         # Tool dispatch (executes tool_use blocks)
+
+│   ├── message.py           # Prompt builder, tool loop, Claude API calls
+
+│   └── use_tools.py         # Tool dispatch (executes tool_use blocks)
+
 ├── models/
-│   ├── users.py             # Users table
-│   ├── trips.py             # Trips table
-│   └── itinerary.py         # Itineraries table
+
+│   ├── users.py             # Users table
+
+│   ├── trips.py             # Trips table
+
+│   └── itinerary.py         # Itineraries table
+
 ├── schemas/
-│   ├── users.py             # Pydantic schemas for users
-│   ├── trips.py             # Pydantic schemas for trips
-│   ├── itinerary.py         # Pydantic schemas for itineraries (LLM-facing + API-facing)
-│   ├── llm.py                # Structured output schema + tool schemas for Claude
-│   └── weather.py           # Pydantic schema validating the weather tool's own output
+
+│   ├── users.py             # Pydantic schemas for users
+
+│   ├── trips.py             # Pydantic schemas for trips
+
+│   ├── itinerary.py         # Pydantic schemas for itineraries (LLM-facing + API-facing)
+
+│   ├── llm.py                # Structured output schema + tool schemas for Claude
+
+│   └── weather.py           # Pydantic schema validating the weather tool's own output
+
 ├── tools/
-│   └── weather.py            # Weather lookup function (external tool integration)
+
+│   └── weather.py            # Weather lookup function (external tool integration)
+
 ├── utils/
-│   ├── jwt.py                # Token creation and decoding
-│   └── prompt_registry.py    # MLflow prompt loading (register_prompt / load_prompt_name)
-└── main.py                   # App entrypoint, middleware, router registration
+
+│   ├── jwt.py                # Token creation and decoding
+
+│   └── prompt_registry.py    # MLflow prompt loading (register_prompt / load_prompt_name)
+
+└── main.py                   # App entrypoint, middleware, router registration
+
 ```
 
 ### Request Flow
 
 ```
+
 Client
-  │
-  ▼
+
+  │
+
+  ▼
+
 FastAPI (main.py)
-  │  CORSMiddleware
-  │  BaseHTTPMiddleware (request logging)
-  │
-  ▼
+
+  │  CORSMiddleware
+
+  │  BaseHTTPMiddleware (request logging)
+
+  │
+
+  ▼
+
 Route Handler (api/routes/)
-  │  JWT auth via get_current_user dependency
-  │
-  ▼
+
+  │  JWT auth via get_current_user dependency
+
+  │
+
+  ▼
+
 Service Layer (services/)
-  │  Business logic and DB queries (AsyncSession)
-  │
-  ├──► PostgreSQL (via SQLAlchemy async)
-  │
-  └──► LLM Service (llm/message.py)
-         │  Builds prompt from trip data
-         │  Calls Anthropic API with output_config (structured outputs)
-         │  and a strict weather tool for real-world conditions
-         │
-         ├──► Weather Tool (tools/weather.py)
-         │       Validated against WeatherResult before being
-         │       returned to Claude as a tool_result
-         │
-         └──► Returns a schema-validated ItineraryContent object
-                (parsed into ItineraryRes with trip_id attached
-                 by the service layer, not generated by the model)
+
+  │  Business logic and DB queries (AsyncSession)
+
+  │
+
+  ├──► PostgreSQL (via SQLAlchemy async)
+
+  │
+
+  └──► LLM Service (llm/message.py)
+
+         │  Builds prompt from trip data
+
+         │  Calls Anthropic API with output_config (structured outputs)
+
+         │  and a strict weather tool for real-world conditions
+
+         │
+
+         ├──► Weather Tool (tools/weather.py)
+
+         │       Validated against WeatherResult before being
+
+         │       returned to Claude as a tool_result
+
+         │
+
+         └──► Returns a schema-validated ItineraryContent object
+
+                (parsed into ItineraryRes with trip_id attached
+
+                 by the service layer, not generated by the model)
+
 ```
 
 ### Database Schema
 
 ```
+
 users
-  id          UUID  PK
-  email       TEXT  unique
-  username    TEXT
-  password    TEXT  (hashed)
-  role        TEXT  (user | admin)
+
+  id          UUID  PK
+
+  email       TEXT  unique
+
+  username    TEXT
+
+  password    TEXT  (hashed)
+
+  role        TEXT  (user | admin)
 
 trips
-  id          UUID  PK
-  user_id     UUID  FK → users.id
-  destination TEXT
-  days        INT
-  budget      FLOAT
-  trip_style  TEXT
+
+  id          UUID  PK
+
+  user_id     UUID  FK → users.id
+
+  destination TEXT
+
+  days        INT
+
+  budget      FLOAT
+
+  trip_style  TEXT
 
 itineraries
-  id          UUID  PK
-  trip_id     UUID  FK → trips.id
-  days        JSON  (AI-generated day-by-day plan; see structure below)
+
+  id          UUID  PK
+
+  trip_id     UUID  FK → trips.id
+
+  days        JSON  (AI-generated day-by-day plan; see structure below)
+
 ```
 
 ---
@@ -133,10 +223,15 @@ Itineraries are generated using [Claude Haiku](https://www.anthropic.com/claude)
 ### How It Works
 
 1. The user sends `POST /itineraries?trip_id=<uuid>` with a valid JWT token.
+
 2. The API reads the trip details (destination, days, budget, travel style) from the database.
+
 3. A structured prompt is built from those details and sent to Claude, constrained by `output_config.format` to a JSON schema derived directly from the `ItineraryContent` Pydantic model.
+
 4. If the model needs current conditions for a destination, it calls a `get_weather` tool (`strict: true`, so its arguments are guaranteed to match the tool's input schema). The tool's own return value is validated against a `WeatherResult` schema before being handed back to Claude, so malformed upstream weather data can never silently reach the model as ground truth.
+
 5. Claude's final response — a JSON object containing a list of daily plans — is validated against `ItineraryContent`. Any validation failure (or a `refusal`/`max_tokens` stop reason) results in a `502`/`422` rather than corrupted data reaching the database.
+
 6. The service layer attaches the real `trip_id` (already known from the database — never generated by the model) to build the final `ItineraryRes`, saves the day-by-day plan to the `itineraries.days` column, and returns it to the client.
 
 **Why the model never generates `trip_id`:** letting an LLM round-trip an identifier it didn't need to touch is an unnecessary opportunity for hallucination. The trip ID is known in Python before the model is ever called, so it's assembled back in afterward instead of being part of the schema Claude has to satisfy.
@@ -146,89 +241,141 @@ Itineraries are generated using [Claude Haiku](https://www.anthropic.com/claude)
 The prompt instructs the model to:
 
 - Suggest only real, verifiable places within the destination area
+
 - Keep all costs within the specified total budget, with each day's `daily_budget` equal to the sum of that day's `estimated_cost` values
+
 - Match activities to the user's travel style (budget, adventure, luxury, cultural, family)
+
 - Include practical information such as opening hours and booking tips
+
 - Return valid JSON only, matching the schema injected into the prompt via `output_schema`
 
 The prompt template and system prompt are versioned in the MLflow prompt registry (`app/utils/prompt_registry.py`) rather than hardcoded, so prompt iterations can be tracked and rolled back independently of code changes.
 
-### Generation Settings
+## Generation Settings
 
 | Setting | Value | Reason |
-|---|---|---|
-| Model | `claude-haiku-4-5` | Fast and cost-effective for structured output |
-| Temperature | `0.6` | Low — ensures medium variation but realistic of content variation between users |
-| Max tokens | `4000` | Enough for multi-day itineraries with detailed activities |
-| System prompt | Yes | Separates role/rules from the per-request content |
-| Structured outputs | `output_config.format` | Constrains Claude's final response to a JSON schema via constrained decoding — guarantees valid, parseable JSON with no retries needed for shape violations |
-| Strict tool use | `strict: true` on tools | Guarantees the arguments Claude passes to `get_weather` match its declared input schema |
+|----------|----------|----------|
+| Model | `claude-haiku-4-5` | Fast and cost-effective while still producing reliable structured output. |
+| Temperature | `0.6` | Provides moderate variation while maintaining realistic and consistent content across users. |
+| Max Tokens | `4000` | Sufficient for generating detailed multi-day itineraries with rich activity descriptions. |
+| System Prompt | Yes | Separates global instructions, role definition, and behavioral rules from request-specific content. |
+| Structured Outputs | `output_config.format` | Constrains Claude's response to a predefined JSON schema using constrained decoding, ensuring valid and parseable JSON without requiring retries for schema violations. |
+| Strict Tool Use | `strict: true` on tools | Ensures that arguments passed by Claude to tools such as `get_weather` always conform to the declared input schema. |
 
 ### Itinerary JSON Structure
 
 Each generated itinerary follows this format:
 
 ```json
+
 {
-  "days": [
-    {
-      "day": 1,
-      "theme": "Arrival and City Exploration",
-      "activities": [
-        {
-          "time": "09:00 AM",
-          "activity": "Visit Kigali Genocide Memorial",
-          "location": "Kigali, Rwanda",
-          "estimated_cost": 10.00,
-          "notes": "Open daily 8am-5pm. Book tickets in advance."
-        }
-      ],
-      "daily_budget": 85.00,
-      "accommodation": "Hotel des Mille Collines, Kigali"
-    }
-  ]
+
+  "days": [
+
+    {
+
+      "day": 1,
+
+      "theme": "Arrival and City Exploration",
+
+      "activities": [
+
+        {
+
+          "time": "09:00 AM",
+
+          "activity": "Visit Kigali Genocide Memorial",
+
+          "location": "Kigali, Rwanda",
+
+          "estimated_cost": 10.00,
+
+          "notes": "Open daily 8am-5pm. Book tickets in advance."
+
+        }
+
+      ],
+
+      "daily_budget": 85.00,
+
+      "accommodation": "Hotel des Mille Collines, Kigali"
+
+    }
+
+  ]
+
 }
+
 ```
 
 This is the shape Claude is constrained to produce (`ItineraryContent`). The API's actual response wraps this list with a `trip_id` and status `message` — see [Itinerary Response Shape](#itinerary-response-shape) below.
 
 ### Validation Layers
 
-Three separate boundaries are validated independently, so a failure at one layer can't silently corrupt data at another:
+The application validates data at three independent boundaries to prevent malformed or unreliable data from propagating through the system.
 
-| Boundary | Validated by | Guards against |
+| Boundary | Validation | Purpose |
 |---|---|---|
-| Tool input (Claude → your function) | `strict: true` on the tool's `input_schema` | Claude calling `get_weather` with malformed or missing arguments |
-| Tool output (your function → Claude) | `WeatherResult` Pydantic model | A flaky weather API returning incomplete or malformed data that Claude would otherwise treat as fact |
-| Final response (Claude → your API) | `output_config.format` (constrained decoding) + `ItineraryContent.model_validate_json()` | Malformed JSON, wrong field types, or a mismatched schema reaching the database |
+| **Claude → Tool** | `strict: true` on the tool's `input_schema` | Ensures Claude sends valid arguments when calling `get_weather`. |
+| **Tool → Claude** | `WeatherResult` Pydantic model | Ensures weather API responses contain the expected fields and data types before Claude uses them. |
+| **Claude → API** | `output_config.format` + `ItineraryContent.model_validate_json()` | Ensures the final itinerary is valid JSON and matches the application's expected schema before it is stored. |
 
----
+This creates a validation chain:
 
-## Setup Instructions
-
+```text
+Claude
+  │
+  │ Tool arguments
+  ▼
+Weather Tool
+  │
+  │ Validated WeatherResult
+  ▼
+Claude
+  │
+  │ Structured JSON
+  ▼
+ItineraryContent
+  │
+  │ Pydantic validation
+  ▼
+Database
 ### Prerequisites
 
 - Python 3.13+
+
 - PostgreSQL
+
 - [uv](https://github.com/astral-sh/uv) package manager
+
 - Anthropic API key
+- MLflow tracking server (for prompt registry)
+
 - MLflow tracking server (for prompt registry)
 
 ### 1. Clone the Repository
 
 ```bash
+
 git clone https://github.com/13XAVI/Vacations-Planner.git
+
 cd vacation-planner
+
 ```
 
 ### 2. Create a Virtual Environment and Install Dependencies
 
 ```bash
+
 uv venv
-source .venv/bin/activate        # Linux/Mac
-.venv\Scripts\activate           # Windows
+
+source .venv/bin/activate        # Linux/Mac
+
+.venv\Scripts\activate           # Windows
 
 uv sync
+
 ```
 
 ### 3. Configure Environment Variables
@@ -236,59 +383,79 @@ uv sync
 Copy the example env file and fill in your values:
 
 ```bash
+
 cp .env.example .env
+
 ```
 
 Required variables:
 
 ```env
+
 DATABASE_URL=postgresql+asyncpg://user:password@localhost:5432/vacation_planner
+
 SECRET_KEY=your_jwt_secret_key
+
 ALGORITHM=HS256
+
 TOKEN_EXPIRE_MINUTES=60
+
 ANTHROPIC_API_KEY=your_anthropic_api_key
+
 MODEL_NAME=claude-haiku-4-5
+
 MAX_TOKEN=4000
+
 ```
 
 ### 4. Create the Database
 
 ```sql
+
 CREATE DATABASE vacation_planner;
+
 ```
 
 ### 5. Run Migrations
 
 ```bash
-alembic upgrade head
-```
 
-### 6. Start the Server
+alembic upgrade head
+
+```
+### 6. Process Documents
+```bash
+
+uv run python -m app.rag.processors   
+
+```
+### 7. Start the Server
 
 ```bash
-uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8080
+
+uv run uvicorn main:app --reload --host 127.0.0.1 --port 8080
+
 ```
 
 API documentation is available at `http://127.0.0.1:8080/docs` once the server is running.
 
 ---
-
 ## API Endpoints
 
 | Method | Endpoint | Auth | Description |
-|---|---|---|---|
-| POST | `/auth/register` | No | Create a new account |
-| POST | `/auth/login` | No | Get a JWT token |
-| GET | `/users/me` | Yes | Get current user profile |
-| POST | `/trips` | Yes | Create a trip |
-| GET | `/trips` | Yes | List all trips |
-| GET | `/trips/{trip_id}` | Yes | Get a single trip |
-| PUT | `/trips/{trip_id}` | Yes | Update a trip |
-| DELETE | `/trips/{trip_id}` | Admin | Delete a trip |
-| POST | `/itineraries?trip_id=` | Yes | Generate an itinerary for a trip |
-| GET | `/itineraries/{trip_id}` | Yes | Retrieve a saved itinerary |
+|----------|----------|----------|----------|
+| POST | `/auth/register` | No | Create a new account. |
+| POST | `/auth/login` | No | Authenticate a user and return a JWT token. |
+| GET | `/users/me` | Yes | Retrieve the current user's profile. |
+| POST | `/trips` | Yes | Create a new trip. |
+| GET | `/trips` | Yes | List all trips for the authenticated user. |
+| GET | `/trips/{trip_id}` | Yes | Retrieve details for a specific trip. |
+| PUT | `/trips/{trip_id}` | Yes | Update an existing trip. |
+| DELETE | `/trips/{trip_id}` | Admin | Delete a trip (admin only). |
+| POST | `/itineraries?trip_id=<trip_id>` | Yes | Generate an itinerary for a trip. |
+| GET | `/itineraries/{trip_id}` | Yes | Retrieve a previously generated itinerary. |
 
-### Itinerary Response Shape
+### Itinerary Response Schema
 
 ```json
 {
@@ -302,14 +469,61 @@ API documentation is available at `http://127.0.0.1:8080/docs` once the server i
           "time": "09:00 AM",
           "activity": "Visit Kigali Genocide Memorial",
           "location": "Kigali, Rwanda",
-          "estimated_cost": 10.00,
-          "notes": "Open daily 8am-5pm. Book tickets in advance."
+          "estimated_cost": 10.0,
+          "notes": "Open daily from 8:00 AM to 5:00 PM. Book tickets in advance."
         }
       ],
-      "daily_budget": 85.00,
+      "daily_budget": 85.0,
       "accommodation": "Hotel des Mille Collines, Kigali"
     }
   ],
   "message": "Itinerary created successfully"
 }
+```
+### Itinerary Response Shape
+
+```json
+
+{
+
+  "trip_id": "2552f629-dddd-43b5-a3a9-a3b5fd24a846",
+
+  "itinerary": [
+
+    {
+
+      "day": 1,
+
+      "theme": "Arrival and City Exploration",
+
+      "activities": [
+
+        {
+
+          "time": "09:00 AM",
+
+          "activity": "Visit Kigali Genocide Memorial",
+
+          "location": "Kigali, Rwanda",
+
+          "estimated_cost": 10.00,
+
+          "notes": "Open daily 8am-5pm. Book tickets in advance."
+
+        }
+
+      ],
+
+      "daily_budget": 85.00,
+
+      "accommodation": "Hotel des Mille Collines, Kigali"
+
+    }
+
+  ],
+
+  "message": "Itinerary created successfully"
+
+}
+
 ```

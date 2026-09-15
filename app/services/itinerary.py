@@ -2,7 +2,7 @@ import logging
 import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.llm.itinerary_builder import buidld_iteneraries
+from app.llm.itinerary_builder import build_itineraries
 from app.models.trips import Trips
 from app.models.itinerary import Itineraries
 from fastapi import HTTPException, status
@@ -13,7 +13,6 @@ logger = logging.getLogger(__name__)
 
 
 async def create_itinerary(tripId: uuid.UUID, user_id: uuid.UUID, db: AsyncSession):
-    
     result = await db.execute(
         select(Trips).where(Trips.id == tripId, Trips.user_id == user_id)
     )
@@ -21,10 +20,14 @@ async def create_itinerary(tripId: uuid.UUID, user_id: uuid.UUID, db: AsyncSessi
     if trip is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Trip not found")
 
-    itinerary_content = buidld_iteneraries(destination=trip.destination, days=trip.days,
-    budget=trip.budget, travel_style=trip.trip_style)
+    itinerary_content = build_itineraries(
+        destination=trip.destination,
+        days=trip.days,
+        budget=trip.budget,
+        travel_style=trip.trip_style
+    )
     itinerary_days = ItineraryRes(trip_id=trip.id, **itinerary_content.model_dump())
-    
+
     itinerary = await db.execute(select(Itineraries).where(Itineraries.trip_id == tripId))
     existing_itinerary = itinerary.scalar_one_or_none()
 
@@ -41,7 +44,6 @@ async def create_itinerary(tripId: uuid.UUID, user_id: uuid.UUID, db: AsyncSessi
     await db.commit()
     await db.refresh(new_itinerary)
     return itinerary_days
-
 
 async def get_itinerary_by_trip(trip_id: uuid.UUID, user_id: uuid.UUID, db: AsyncSession):
     trips = await db.execute(

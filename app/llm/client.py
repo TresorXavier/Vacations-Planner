@@ -13,7 +13,6 @@ model = settings.MODEL_NAME
 max_token = settings.MAX_TOKEN
 model = settings.MODEL_NAME
 max_token = settings.MAX_TOKEN
-temperature= float(settings.TEMPERATURE)
 
 system_prompt = load_prompt_name("travel_planner_system",version=2).template
 
@@ -26,7 +25,6 @@ def run_tools(user_prompt, tools=None, system=None):
         "messages": messages,
         "max_tokens": max_token,
         "system": system or system_prompt,
-        "temperature":temperature,
         "output_config":itineraries_output_schema
     }
     if tools:
