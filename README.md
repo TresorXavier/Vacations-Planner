@@ -2,25 +2,6 @@
 
 The Vacation Planner API is a backend system built with FastAPI that helps users plan and manage their trips, including AI-generated itineraries powered by Claude.
 
-## Overview
-
-This project covers core backend development concepts including:
-
-- FastAPI fundamentals
-
-- RESTful API design
-
-- SQL database integration with async SQLAlchemy
-
-- ORM usage (SQLAlchemy + Alembic migrations)
-
-- CRUD operations
-
-- JWT-based authentication
-
-- LLM integration (Anthropic Claude) with structured outputs and tool use
-
-- Environment-based configuration
 
 ## Features
 
@@ -35,6 +16,8 @@ Users can:
 - Retrieve and update previously generated itineraries
 
 - Securely access all protected routes using JWT authentication
+
+- AI agent that can decide which tool or service to use based on the user’s request.
 
 ---
 
@@ -174,47 +157,6 @@ Service Layer (services/)
 
 ```
 
-### Database Schema
-
-```
-
-users
-
-  id          UUID  PK
-
-  email       TEXT  unique
-
-  username    TEXT
-
-  password    TEXT  (hashed)
-
-  role        TEXT  (user | admin)
-
-trips
-
-  id          UUID  PK
-
-  user_id     UUID  FK → users.id
-
-  destination TEXT
-
-  days        INT
-
-  budget      FLOAT
-
-  trip_style  TEXT
-
-itineraries
-
-  id          UUID  PK
-
-  trip_id     UUID  FK → trips.id
-
-  days        JSON  (AI-generated day-by-day plan; see structure below)
-
-```
-
----
 
 ## LLM Integration
 
@@ -238,78 +180,9 @@ Itineraries are generated using [Claude Haiku](https://www.anthropic.com/claude)
 
 ### Prompt Design
 
-The prompt instructs the model to:
-
-- Suggest only real, verifiable places within the destination area
-
-- Keep all costs within the specified total budget, with each day's `daily_budget` equal to the sum of that day's `estimated_cost` values
-
-- Match activities to the user's travel style (budget, adventure, luxury, cultural, family)
-
-- Include practical information such as opening hours and booking tips
-
-- Return valid JSON only, matching the schema injected into the prompt via `output_schema`
 
 The prompt template and system prompt are versioned in the MLflow prompt registry (`app/utils/prompt_registry.py`) rather than hardcoded, so prompt iterations can be tracked and rolled back independently of code changes.
 
-## Generation Settings
-
-| Setting | Value | Reason |
-|----------|----------|----------|
-| Model | `claude-haiku-4-5` | Fast and cost-effective while still producing reliable structured output. |
-| Temperature | `0.6` | Provides moderate variation while maintaining realistic and consistent content across users. |
-| Max Tokens | `4000` | Sufficient for generating detailed multi-day itineraries with rich activity descriptions. |
-| System Prompt | Yes | Separates global instructions, role definition, and behavioral rules from request-specific content. |
-| Structured Outputs | `output_config.format` | Constrains Claude's response to a predefined JSON schema using constrained decoding, ensuring valid and parseable JSON without requiring retries for schema violations. |
-| Strict Tool Use | `strict: true` on tools | Ensures that arguments passed by Claude to tools such as `get_weather` always conform to the declared input schema. |
-
-### Itinerary JSON Structure
-
-Each generated itinerary follows this format:
-
-```json
-
-{
-
-  "days": [
-
-    {
-
-      "day": 1,
-
-      "theme": "Arrival and City Exploration",
-
-      "activities": [
-
-        {
-
-          "time": "09:00 AM",
-
-          "activity": "Visit Kigali Genocide Memorial",
-
-          "location": "Kigali, Rwanda",
-
-          "estimated_cost": 10.00,
-
-          "notes": "Open daily 8am-5pm. Book tickets in advance."
-
-        }
-
-      ],
-
-      "daily_budget": 85.00,
-
-      "accommodation": "Hotel des Mille Collines, Kigali"
-
-    }
-
-  ]
-
-}
-
-```
-
-This is the shape Claude is constrained to produce (`ItineraryContent`). The API's actual response wraps this list with a `trip_id` and status `message` — see [Itinerary Response Shape](#itinerary-response-shape) below.
 
 ### Validation Layers
 
@@ -455,75 +328,47 @@ API documentation is available at `http://127.0.0.1:8080/docs` once the server i
 | POST | `/itineraries?trip_id=<trip_id>` | Yes | Generate an itinerary for a trip. |
 | GET | `/itineraries/{trip_id}` | Yes | Retrieve a previously generated itinerary. |
 
-### Itinerary Response Schema
+## Itinerary Generation: LangGraph Agent + Streaming
 
-```json
-{
-  "trip_id": "2552f629-dddd-43b5-a3a9-a3b5fd24a846",
-  "itinerary": [
-    {
-      "day": 1,
-      "theme": "Arrival and City Exploration",
-      "activities": [
-        {
-          "time": "09:00 AM",
-          "activity": "Visit Kigali Genocide Memorial",
-          "location": "Kigali, Rwanda",
-          "estimated_cost": 10.0,
-          "notes": "Open daily from 8:00 AM to 5:00 PM. Book tickets in advance."
-        }
-      ],
-      "daily_budget": 85.0,
-      "accommodation": "Hotel des Mille Collines, Kigali"
-    }
-  ],
-  "message": "Itinerary created successfully"
-}
-```
-### Itinerary Response Shape
+The itinerary endpoint no longer makes a single blocking LLM call. It runs
+a LangGraph agent that reasons over multiple tools and streams progress to
+the client in real time via Server-Sent Events (SSE).
 
-```json
+### What changed
 
-{
+- **LangGraph agent** (`app/agents/travel_agent.py`) — replaces the old
+  single-shot `build_itineraries` call. The agent decides which tools to
+  call and in what order, rather than following a fixed pipeline.
 
-  "trip_id": "2552f629-dddd-43b5-a3a9-a3b5fd24a846",
+- **Tool calling** — the agent has access to:
+  - `get_trip_details` — loads the trip record (destination, days, budget, style)
+  - `get_weather` — current conditions for the destination
+  - `search_travel_knowledge` — RAG retrieval over the ingested corpus
+    (local guides + Wikivoyage), filtered by destination/country
+  - `cost_calculation` — rough per-day/per-traveler cost estimate
+  - `find_places_or_route` — route/distance lookups between points
 
-  "itinerary": [
+  The agent chains these based on the request rather than calling them in
+  a hardcoded sequence.
 
-    {
+- **Streaming** (`app/services/itinerary.py`, `stream_itinerary`) — the
+  agent graph is consumed with `astream(..., stream_mode="messages")`,
+  which yields `(message_chunk, metadata)` pairs. Each chunk is translated
+  into one of four SSE event types:
+  - `message_chunk` — incremental text from the model
+  - `tool_started` — a tool call was made (deduped so each tool announces once)
+  - `tool_result` — a tool's result, truncated to a preview
+  - `finished` — the final parsed itinerary, or `error` on failure
 
-      "day": 1,
+- **Endpoint** (`app/api/routes/itinerary.py`) — `POST /itineraries` returns
+  a `StreamingResponse` with `media_type="text/event-stream"`, wrapping the
+  generator's dicts into standard `event: ... \n data: ... \n\n` frames.
 
-      "theme": "Arrival and City Exploration",
 
-      "activities": [
+### Known limitations
 
-        {
-
-          "time": "09:00 AM",
-
-          "activity": "Visit Kigali Genocide Memorial",
-
-          "location": "Kigali, Rwanda",
-
-          "estimated_cost": 10.00,
-
-          "notes": "Open daily 8am-5pm. Book tickets in advance."
-
-        }
-
-      ],
-
-      "daily_budget": 85.00,
-
-      "accommodation": "Hotel des Mille Collines, Kigali"
-
-    }
-
-  ],
-
-  "message": "Itinerary created successfully"
-
-}
-
-```
+- Cost estimates from `cost_calculation` are rough and not currently
+  validated against the trip's actual budget.
+- The model's final JSON is extracted from mixed prose + tool narration
+  via regex (fenced ```json block, falling back to outermost `{...}`),
+  since the agent narrates between tool calls rather than emitting only JSON.

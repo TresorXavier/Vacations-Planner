@@ -1,9 +1,9 @@
 
+from langchain_core.tools import StructuredTool, tool
 import requests
-from app.schemas.weather import WeatherResponse,WeatherReq
-
-
-def get_weather(city:WeatherReq)-> WeatherResponse:
+from app.schemas.weather import WeatherInput, WeatherResponse
+    
+def get_weather(city:WeatherInput)-> WeatherResponse:
     response =  requests.get(
         "https://geocoding-api.open-meteo.com/v1/search",
         params={
@@ -36,4 +36,12 @@ def get_weather(city:WeatherReq)-> WeatherResponse:
         weather_code=current["weather_code"]
     )
 
-    
+weather_tool = StructuredTool.from_function(
+    func=get_weather,
+    name="get_weather",
+    description=(
+        "Look up current weather conditions for a city, to help tailor "
+        "itinerary recommendations (e.g. outdoor vs indoor activities)."
+    ),
+    args_schema=WeatherInput,
+)
