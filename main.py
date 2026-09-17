@@ -11,18 +11,19 @@ from app.api.routes.itinerary import router as itineraries_router
 from fastapi import FastAPI
 
 from app.api.routes_deps import logging_middleware
-from app.core.lifespan_db import create_db_tables
+from app.core.lifespan_db import create_db_tables, init_checkpointer, close_checkpointer
 from app.core.validation import Validation_Exeptions_Handler
-
 logging.basicConfig(
     level=logging.INFO,
     format="%(levelname)s | %(name)s | %(message)s"
 )
 
 @asynccontextmanager
-async def lifespan_db(app:FastAPI):
-    await  create_db_tables()
+async def lifespan_db(app: FastAPI):
+    await create_db_tables()
+    await init_checkpointer()
     yield
+    await close_checkpointer()
 
 app = FastAPI(
     title="Vacation Planning",

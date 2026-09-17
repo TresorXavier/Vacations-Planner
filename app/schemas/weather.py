@@ -1,8 +1,8 @@
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-class  WeatherReq(BaseModel):
-    name:str
+class WeatherInput(BaseModel):
+    city: str = Field(description="City name, e.g. 'Kigali'")
     
 class WeatherResponse(BaseModel):
     city: str
