@@ -1,6 +1,5 @@
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
-
 from app.core.config import settings
 from app.core.base import Base
 from app.models.users import Users
