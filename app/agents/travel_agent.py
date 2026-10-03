@@ -1,88 +1,59 @@
-from typing import TypedDict, Annotated, Sequence
 
-from langchain_core.messages import BaseMessage, SystemMessage
+import uuid
+from typing import AsyncIterator, TypedDict, Annotated, Sequence
+from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 from langchain_anthropic import ChatAnthropic
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
-
-from app.core.config import settings
-from app.utils.prompt_registry import load_prompt_name
-
-from app.tools.rag_tools import rag_tool
-from app.tools.weather import weather_tool
-from app.tools.maps import maps_tool
-from app.tools.pricing import cost_calculation
-from app.tools.trip_details_tool import build_trip_details_tool
 
 
 class AgentState(TypedDict):
     messages: Annotated[Sequence[BaseMessage], add_messages]
 
 
-def build_agent_graph(user_id, db,checkpointer):
-    """
-    Build and compile a travel-planning agent graph.
-    user_id and db are application-controlled values used by
-    the trip-details tool to retrieve the authenticated user's trip.
-    """
+class TravelAgent:
+    """Compiled once at startup, reused for every request."""
 
-    trip_details_tool = build_trip_details_tool(user_id=user_id,db=db)
+    def __init__(self, tools: list, checkpointer, model_name: str, api_key: str, system_prompt: str):
+        self._tools = tools
+        self._system_prompt = system_prompt
+        self._llm = ChatAnthropic(model=model_name, api_key=api_key).bind_tools(tools)
+        self._graph = self._build_graph(checkpointer)
 
-    tools = [
-        rag_tool,
-        weather_tool,
-        maps_tool,
-        cost_calculation,
-        trip_details_tool,
-    ]
+  
+    def _build_graph(self, checkpointer):
+        graph = StateGraph(AgentState)
+        graph.add_node("agent", self._call_model)
+        graph.add_node("tools", ToolNode(self._tools))
+        graph.add_edge(START, "agent")
+        graph.add_conditional_edges(
+            "agent", self._route, {"continue": "tools", "end": END}
+        )
+        graph.add_edge("tools", "agent")
+        return graph.compile(checkpointer=checkpointer)
 
-    llm = ChatAnthropic(model=settings.MODEL_NAME,api_key=settings.ANTHROPIC_API_KEY).bind_tools(tools)
-
-    def model_call(state: AgentState) -> AgentState:
-        """
-        Ask the LLM what to do next. The LLM can either:
-        - answer the user directly
-        - request one or more tools
-        """
-
-        system_prompt = load_prompt_name("travel_planner_system",version=2).template
-        messages = messages = [SystemMessage(content=system_prompt)] + state["messages"]
-
-        response = llm.invoke(messages)
-
+    async def _call_model(self, state: AgentState) -> dict:
+        messages = [SystemMessage(content=self._system_prompt)] + list(state["messages"])
+        response = await self._llm.ainvoke(messages)
         return {"messages": [response]}
 
+    @staticmethod
+    def _route(state: AgentState) -> str:
+        return "continue" if state["messages"][-1].tool_calls else "end"
 
-    def should_continue_call_tools(state: AgentState) -> str:
-        """
-        Decide what should happen after the agent responds.
-        If the LLM requested tools go to ToolNode Otherwise finish the graph
-        """
-
-        last_message = state["messages"][-1]
-
-        if last_message.tool_calls:
-            return "continue"
-
-        return "end"
-
-
-    graph = StateGraph(AgentState)
-
-    graph.add_node("agent",model_call)
-    graph.add_node("tools", ToolNode(tools))
-
-    graph.add_edge(START,"agent")
-
-    graph.add_conditional_edges(
-        "agent",
-        should_continue_call_tools,
-        {
-            "continue": "tools",
-            "end": END,
-        },
-    )
-    graph.add_edge("tools","agent",)
-
-    return graph.compile(checkpointer=checkpointer)
+    async def stream(self, user_message: str, *, user_id: uuid.UUID, db, new_id: str) -> AsyncIterator[tuple]:
+        """Yields (chunk, metadata) from the graph."""
+        config = {
+            "configurable": {
+                "thread_id": new_id,          
+                "user_id": str(user_id),
+                "db": db,
+            }
+        }
+        async for item in self._graph.astream(
+            {"messages": [HumanMessage(content=user_message)]},
+            stream_mode="messages",
+            config=config,
+        ):
+            yield item

@@ -4,6 +4,7 @@ from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette import status
+from app.agents.travel_agent import TravelAgent
 from app.core.lifespan_db import create_session
 from app.models.users import Users
 from app.utils.jwt import bearer_scheme, decode_access_token
@@ -50,3 +51,6 @@ async def logging_middleware(request: Request, call_next):
     logger.info(f"← {response.status_code} {request.method} {request.url} ")
 
     return response
+
+def get_travel_agent(request: Request) -> TravelAgent:
+    return request.app.state.travel_agent
