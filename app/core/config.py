@@ -18,6 +18,11 @@ class Settings(BaseSettings):
     USER_AGENT:str
     NOMINATIM_URL:str
     OSRM_URL:str
+    GEOCODING_URL :str
+    FORECAST_URL:str
+    STT_MODEL_SIZE: str = "base"
+    MAX_AUDIO_MB: int = 10
+    TTS_LANG: str = "en"  
     
     model_config = ConfigDict( env_file=BASE_DIR / ".env",env_file_encoding="utf-8")
 

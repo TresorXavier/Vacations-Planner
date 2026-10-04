@@ -1,3 +1,4 @@
+import json
 import logging
 import uuid
 
@@ -18,9 +19,11 @@ logger = logging.getLogger(__name__)
 ITINERARY_PROMPT = (
     "Create a complete travel itinerary for my trip with trip ID {trip_id}. "
     "Use my trip details and retrieve useful travel information, weather, "
-    "maps, and pricing."
+    "maps, and pricing.\n\n"
+    "Your FINAL answer must be ONLY one JSON object that follows this JSON schema exactly. "
+    "Use no extra fields and no text outside the JSON:\n{schema}"
 )
-
+ITINERARY_SCHEMA = json.dumps(ItineraryContent.model_json_schema())
 
 class ItineraryService:
     def __init__(self, agent: TravelAgent, db: AsyncSession):
@@ -38,7 +41,7 @@ class ItineraryService:
 
         try:
             async for chunk, _meta in self.agent.stream(
-                ITINERARY_PROMPT.format(trip_id=trip_id),
+                ITINERARY_PROMPT.format(trip_id=trip_id, schema=ITINERARY_SCHEMA),
                 user_id=user_id,
                 db=self.db,
                 new_id=f"{trip_id}:{uuid.uuid4()}",
@@ -85,7 +88,10 @@ class ItineraryService:
         elif isinstance(chunk, ToolMessage):
             events.append({
                 "event": "tool_result",
-                "data": {"tool": chunk.name, "result_preview": str(chunk.content)[:200]},
+                "data": {
+                    "tool": chunk.name,
+                    "result_preview": (extract_text(chunk.content) or str(chunk.content))[:200],
+                },
             })
 
         return events

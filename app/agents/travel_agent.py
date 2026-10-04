@@ -25,7 +25,7 @@ class TravelAgent:
     def _build_graph(self, checkpointer):
         graph = StateGraph(AgentState)
         graph.add_node("agent", self._call_model)
-        graph.add_node("tools", ToolNode(self._tools))
+        graph.add_node("tools", ToolNode(self._tools,handle_tool_errors=True))
         graph.add_edge(START, "agent")
         graph.add_conditional_edges(
             "agent", self._route, {"continue": "tools", "end": END}
